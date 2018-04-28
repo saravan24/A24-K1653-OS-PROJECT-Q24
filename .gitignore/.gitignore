@@ -1,0 +1,68 @@
+#include<stdio.h>
+#include<pthread.h>
+#include<unistd.h>
+pthread_mutex_t lock;
+struct cv* cv;
+int num_waiting;
+int num_in_game;
+int num_in_next;
+
+
+void game_sync_init()
+{
+	pthread_mutex_init(&lock);
+	cv = cv_create("cv");
+	num_waiting = 0;
+	num_in_game = 0;
+	num_in_next = 0;
+}
+
+
+
+void before_match()
+{
+	pthread_mutex_lock(&lock);
+	num_waiting++;
+	// Should only start a new game if there are PLAYERS_PER_MATCH
+	// players waiting and a game is not in progress.
+	while (num_waiting < PLAYERS_PER_MATCH || num_in_game != 0) {
+	cv_wait(cv, lock);
+	}
+	num_in_next++;
+	if (num_in_next != PLAYERS_PER_MATCH) {
+	cv_signal(cv, lock); // Chain the wakeup
+	} else {
+	num_waiting -= PLAYERS_PER_MATCH;
+	num_in_game = PLAYERS_PER_MATCH;
+	printf("3 players playing now");
+	num_in_next = 0;
+	}
+	pthread_mutex_lock(&lock);
+
+}
+
+
+void after_match(){
+	
+	pthread_mutex_lock(&lock);
+	num_in_game--;
+	if (num_in_game == 0 && num_waiting >= PLAYERS_PER_MATCH) {
+	// Last player to exit. Check if it needs to wakeup
+	// user. Just need to wakeup one user.
+	cv_signal(cv, lock);
+	}
+	pthread_mutex_unlock(&lock);
+}
+
+int main(){
+	int n;
+	printf("Enter no of players\n");
+	scanf("%d",&n);
+	for(i=0;i<n;i++){
+		before_match();
+	}
+	while(n--){
+		after_match();
+	}	
+	return 0;
+}
